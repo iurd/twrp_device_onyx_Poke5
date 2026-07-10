@@ -34,7 +34,7 @@ It uses:
 #define ONYX_EBC_SEND_UPDATE     0x700c
 ```
 
-On Poke5, `/dev/ebc` reports an actual update buffer of `1448x1072` even though the DRM EPDC mode is `407x1083`. The TWRP surface is therefore overridden to `1448x1072` for EBC refresh.
+On Poke5, `/dev/ebc` reports a physical update buffer of `1448x1072` and a logical/touch size of `1072x1448` even though the DRM EPDC mode is `407x1083`. The TWRP surface is therefore overridden to portrait `1072x1448`; when refreshing, pixels are rotated into the physical `1448x1072` EBC buffer and the update ioctl uses the physical rect.
 
 ## Stock-derived blobs
 

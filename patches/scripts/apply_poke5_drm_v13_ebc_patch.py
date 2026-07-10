@@ -40,6 +40,8 @@ static uint8_t *ebc_buffer = nullptr;
 static size_t ebc_buffer_size = 0;
 static uint32_t ebc_width = 0;
 static uint32_t ebc_height = 0;
+static uint32_t ebc_logical_width = 0;
+static uint32_t ebc_logical_height = 0;
 static uint32_t ebc_update_marker = 1;
 
 static bool onyx_ebc_try_init(uint32_t request_width, uint32_t request_height) {
@@ -68,11 +70,14 @@ static bool onyx_ebc_try_init(uint32_t request_width, uint32_t request_height) {
 
     uint32_t width = info.words[6];
     uint32_t height = info.words[7];
-    printf("Poke5 EBC: request %ux%u got words[6,7]=%ux%u words[0..5]=%u,%u,%u,%u,%u,%u\n",
-           request_width, request_height, width, height,
+    uint32_t logical_width = info.words[2] ? info.words[2] : width;
+    uint32_t logical_height = info.words[3] ? info.words[3] : height;
+    printf("Poke5 EBC: request %ux%u got words[6,7]=%ux%u logical=%ux%u words[0..5]=%u,%u,%u,%u,%u,%u\n",
+           request_width, request_height, width, height, logical_width, logical_height,
            info.words[0], info.words[1], info.words[2], info.words[3], info.words[4], info.words[5]);
 
-    if (width == 0 || height == 0 || width > 4096 || height > 4096) {
+    if (width == 0 || height == 0 || width > 4096 || height > 4096 ||
+            logical_width == 0 || logical_height == 0 || logical_width > 4096 || logical_height > 4096) {
         close(fd);
         return false;
     }
@@ -90,7 +95,10 @@ static bool onyx_ebc_try_init(uint32_t request_width, uint32_t request_height) {
     ebc_buffer_size = size;
     ebc_width = width;
     ebc_height = height;
-    printf("Poke5 EBC: mapped %ux%u buffer size=%zu\n", ebc_width, ebc_height, ebc_buffer_size);
+    ebc_logical_width = logical_width;
+    ebc_logical_height = logical_height;
+    printf("Poke5 EBC: mapped physical %ux%u logical %ux%u buffer size=%zu\n",
+           ebc_width, ebc_height, ebc_logical_width, ebc_logical_height, ebc_buffer_size);
     return true;
 }
 
@@ -119,24 +127,42 @@ static bool onyx_ebc_init(uint32_t drm_width, uint32_t drm_height) {
 static int onyx_ebc_flip(const GRSurface *surface) {
     if (ebc_fd < 0 || !ebc_buffer || !surface)
         return -ENODEV;
-    if ((uint32_t)surface->width != ebc_width || (uint32_t)surface->height != ebc_height) {
-        printf("Poke5 EBC: surface %dx%d does not match EBC %ux%u\n",
-               surface->width, surface->height, ebc_width, ebc_height);
+    if ((uint32_t)surface->width == ebc_width && (uint32_t)surface->height == ebc_height) {
+        const size_t packed_row_bytes = (size_t)surface->width * 4;
+        for (uint32_t y = 0; y < (uint32_t)surface->height; ++y) {
+            memcpy(ebc_buffer + y * packed_row_bytes,
+                   surface->data + y * surface->row_bytes,
+                   packed_row_bytes);
+        }
+        printf("Poke5 EBC: copied landscape surface %dx%d directly\n", surface->width, surface->height);
+    } else if ((uint32_t)surface->width == ebc_logical_width &&
+               (uint32_t)surface->height == ebc_logical_height &&
+               (uint32_t)surface->width == ebc_height &&
+               (uint32_t)surface->height == ebc_width) {
+        uint32_t src_w = surface->width;
+        uint32_t src_h = surface->height;
+        for (uint32_t y = 0; y < src_h; ++y) {
+            const uint32_t *src = reinterpret_cast<const uint32_t *>(surface->data + y * surface->row_bytes);
+            for (uint32_t x = 0; x < src_w; ++x) {
+                uint32_t dst_x = y;
+                uint32_t dst_y = src_w - 1 - x;
+                reinterpret_cast<uint32_t *>(ebc_buffer + dst_y * ebc_width * 4)[dst_x] = src[x];
+            }
+        }
+        printf("Poke5 EBC: rotated portrait surface %ux%u to physical %ux%u using orientation 90\n",
+               src_w, src_h, ebc_width, ebc_height);
+    } else {
+        printf("Poke5 EBC: surface %dx%d cannot map to EBC physical %ux%u logical %ux%u\n",
+               surface->width, surface->height, ebc_width, ebc_height,
+               ebc_logical_width, ebc_logical_height);
         return -EINVAL;
-    }
-
-    const size_t packed_row_bytes = (size_t)surface->width * 4;
-    for (uint32_t y = 0; y < (uint32_t)surface->height; ++y) {
-        memcpy(ebc_buffer + y * packed_row_bytes,
-               surface->data + y * surface->row_bytes,
-               packed_row_bytes);
     }
 
     struct poke5_ebc_update update = {};
     update.left = 0;
     update.top = 0;
-    update.width = surface->width;
-    update.height = surface->height;
+    update.width = ebc_width;
+    update.height = ebc_height;
     update.waveform_mode = 5;
     update.update_mode = 1;
     update.update_marker = ebc_update_marker++;
@@ -144,8 +170,9 @@ static int onyx_ebc_flip(const GRSurface *surface) {
     update.flags = ONYX_EBC_DITHER_FLAG;
 
     int ret = ioctl(ebc_fd, ONYX_EBC_SEND_UPDATE, &update);
-    printf("Poke5 EBC: SEND_UPDATE ret=%d marker=%u rect=[%u %u %u %u] waveform=%u update=%u temp=0x%x flags=0x%x\n",
+    printf("Poke5 EBC v15: SEND_UPDATE ret=%d marker=%u physical_rect=[%u %u %u %u] surface=%dx%d waveform=%u update=%u temp=0x%x flags=0x%x\n",
            ret, update.update_marker, update.left, update.top, update.width, update.height,
+           surface->width, surface->height,
            update.waveform_mode, update.update_mode, update.temperature, update.flags);
     if (ret < 0)
         perror("Poke5 EBC: SEND_UPDATE failed");
@@ -167,10 +194,10 @@ new_dim = '''    width = main_monitor_crtc->mode.hdisplay;
             main_monitor_connector->connector_type == DRM_MODE_CONNECTOR_DSI &&
             main_monitor_connector->connector_type_id == 2 &&
             onyx_ebc_init(width, height)) {
-        printf("Poke5 EBC: override minui surface from DRM %ux%u to EBC %ux%u\\n",
-               width, height, ebc_width, ebc_height);
-        width = ebc_width;
-        height = ebc_height;
+        printf("Poke5 EBC: override minui surface from DRM %ux%u to logical portrait %ux%u (physical %ux%u)\\n",
+               width, height, ebc_logical_width, ebc_logical_height, ebc_width, ebc_height);
+        width = ebc_logical_width;
+        height = ebc_logical_height;
     }
 '''
 if "Poke5 EBC: override minui surface" not in text:
