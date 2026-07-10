@@ -1,0 +1,29 @@
+# BOOX Poke5 initial TWRP fstab
+# Firmware reference: 2024-06-05_12-04_3.5.1_19ed122a7, Android 11, active slot _a during extraction
+# This first-pass fstab favors explicit physical partitions for safety.
+
+/system             ext4      system                                      flags=display="System";logical;slotselect;backup=0
+/system_ext         ext4      system_ext                                  flags=display="System Ext";logical;slotselect;backup=0
+/vendor             ext4      vendor                                      flags=display="Vendor";logical;slotselect;backup=0
+/product            ext4      product                                     flags=display="Product";logical;slotselect;backup=0
+
+/data               f2fs      /dev/block/bootdevice/by-name/userdata      flags=display="Data";backup=1;wipeingui;formattable;fileencryption=aes-256-xts:aes-256-cts:v2+emmc_optimized+wrappedkey_v0;metadata_encryption=aes-256-xts:wrappedkey_v0;keydirectory=/metadata/vold/metadata_encryption
+/metadata           ext4      /dev/block/bootdevice/by-name/metadata      flags=display="Metadata";backup=1;formattable
+/persist            ext4      /dev/block/bootdevice/by-name/persist       flags=display="Persist";backup=1
+/onyxconfig         ext4      /dev/block/bootdevice/by-name/onyxconfig    flags=display="Onyx Config";backup=1
+
+/boot_a             emmc      /dev/block/bootdevice/by-name/boot_a        flags=display="Boot A";backup=1;flashimg=1
+/boot_b             emmc      /dev/block/bootdevice/by-name/boot_b        flags=display="Boot B";backup=1;flashimg=1
+/recovery_a         emmc      /dev/block/bootdevice/by-name/recovery_a    flags=display="Recovery A";backup=1;flashimg=1
+/recovery_b         emmc      /dev/block/bootdevice/by-name/recovery_b    flags=display="Recovery B";backup=1;flashimg=1
+/dtbo_a             emmc      /dev/block/bootdevice/by-name/dtbo_a        flags=display="DTBO A";backup=1;flashimg=1
+/dtbo_b             emmc      /dev/block/bootdevice/by-name/dtbo_b        flags=display="DTBO B";backup=1;flashimg=1
+/vbmeta_a           emmc      /dev/block/bootdevice/by-name/vbmeta_a      flags=display="VBMeta A";backup=1;flashimg=1
+/vbmeta_b           emmc      /dev/block/bootdevice/by-name/vbmeta_b      flags=display="VBMeta B";backup=1;flashimg=1
+/vbmeta_system_a    emmc      /dev/block/bootdevice/by-name/vbmeta_system_a flags=display="VBMeta System A";backup=1;flashimg=1
+/vbmeta_system_b    emmc      /dev/block/bootdevice/by-name/vbmeta_system_b flags=display="VBMeta System B";backup=1;flashimg=1
+/super              emmc      /dev/block/bootdevice/by-name/super         flags=display="Super";backup=1;flashimg=1
+/misc               emmc      /dev/block/bootdevice/by-name/misc          flags=display="Misc";backup=1
+
+/external_sd        vfat      /devices/platform/soc/4784000.sdhci/mmc_host* flags=display="MicroSD";storage;removable
+/usb_otg            vfat      /devices/platform/soc/*.dwc3/xhci-hcd*      flags=display="USB OTG";storage;removable
