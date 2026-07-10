@@ -24,7 +24,7 @@ The current display path follows the working BOOX Leaf3/Page approach:
 The key patch is:
 
 ```text
-patches/scripts/apply_poke5_drm_v13_ebc_patch.py
+patches/0001-minuitwrp-poke5-ebc-display.patch
 ```
 
 It uses:
@@ -35,6 +35,12 @@ It uses:
 ```
 
 On Poke5, `/dev/ebc` reports a physical update buffer of `1448x1072` and a logical/touch size of `1072x1448` even though the DRM EPDC mode is `407x1083`. The TWRP surface is therefore overridden to portrait `1072x1448`; when refreshing, pixels are rotated into the physical `1448x1072` EBC buffer and the update ioctl uses the physical rect.
+
+## E-ink theme
+
+This tree includes a monochrome Kindle e-ink TWRP theme under `theme/`, derived from `MollySophia/twrp_device_amazon_kindle`. `TW_CUSTOM_THEME` points to that directory. The theme keeps its original `1080x1920` design resolution so TWRP's built-in theme scaler can map it onto the Poke5 logical portrait framebuffer (`1072x1448`).
+
+The build patch `patches/0002-gui-support-custom-theme-directory.patch` extends the TWRP Soong theme copy hook so `TW_CUSTOM_THEME` can be a directory containing `ui.xml`, `portrait.xml`, `splash.xml`, and `images/`.
 
 ## Stock-derived blobs
 

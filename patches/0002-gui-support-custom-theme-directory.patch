@@ -1,0 +1,18 @@
+diff --git a/gui/libguitwrp_defaults.go b/gui/libguitwrp_defaults.go
+index 290be25..40bb46d 100644
+--- a/gui/libguitwrp_defaults.go
++++ b/gui/libguitwrp_defaults.go
+@@ -176,8 +176,12 @@ func copyCustomTheme(ctx android.BaseContext, customTheme string) {
+ 	outDir := ctx.Config().Getenv("OUT")
+ 	twRes := outDir + "/recovery/root/twres/"
+ 	os.MkdirAll(twRes, os.ModePerm)
+-	fileDest := twRes + path.Base(customTheme)
+ 	fileToCopy := fmt.Sprintf("%s%s", getBuildAbsDir(ctx), customTheme)
++	if info, err := os.Stat(fileToCopy); err == nil && info.IsDir() {
++		copyDir(fileToCopy, twRes)
++		return
++	}
++	fileDest := twRes + path.Base(customTheme)
+ 	copyFile(fileToCopy, fileDest)
+ }
+ 

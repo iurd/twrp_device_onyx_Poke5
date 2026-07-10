@@ -52,6 +52,7 @@ TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery.fstab
 BOARD_AVB_ENABLE := false
 
 TW_THEME := portrait_hdpi
+TW_CUSTOM_THEME := $(if $(wildcard $(DEVICE_PATH)/theme),$(DEVICE_PATH)/theme)
 TW_DEFAULT_LANGUAGE := zh_CN
 TW_EXTRA_LANGUAGES := true
 TARGET_SCREEN_WIDTH := 1072
