@@ -1,0 +1,65 @@
+diff --git a/openrecoveryscript.cpp b/openrecoveryscript.cpp
+--- a/openrecoveryscript.cpp
++++ b/openrecoveryscript.cpp
+@@ -708,6 +708,12 @@ void OpenRecoveryScript::Run_CLI_Command(const char* command) {
+ 		gui_print("Running Poke5 metadata decrypt debug%s...\n", mount_data ? " with mount" : "");
+ 		int ret = PartitionManager.Poke5_Debug_Metadata_Decrypt(mount_data);
+ 		gui_print("Poke5 metadata decrypt debug result: %d\n", ret);
++	} else if (cmd_str == "poke5fbe") {
++		bool unlock_default = parts.size() > 1 && parts[1] == "default";
++		gui_print("Running Poke5 FBE debug (%s)...\n", unlock_default ? "DE+default CE" : "DE only");
++		int ret = PartitionManager.Poke5_Debug_FBE_Decrypt(unlock_default);
++		gui_print("Poke5 FBE debug result: %d\n", ret);
+ 	} else if (cmd_str == "decrypt") {
+ 		// twrp cmd cannot decrypt a password with space, should decrypt on gui
+ 		if (parts.size() == 1) {
+diff --git a/partitionmanager.cpp b/partitionmanager.cpp
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -506,6 +506,35 @@ int TWPartitionManager::Poke5_Debug_Metadata_Decrypt(bool MountData) {
+ #endif
+ }
+ 
++int TWPartitionManager::Poke5_Debug_FBE_Decrypt(bool UnlockDefault) {
++#ifdef TW_INCLUDE_CRYPTO
++#ifdef TW_INCLUDE_FBE
++#ifdef USE_FSCRYPT
++	TWPartition* data = Find_Partition_By_Path("/data");
++	if (data == nullptr || !data->Is_Mounted()) {
++		LOGERR("Poke5 FBE debug: /data is not mounted\n");
++		return -1;
++	}
++	LOGINFO("Poke5 FBE debug: loading system and user DE keys\n");
++	bool de_ok = Decrypt_DE();
++	LOGINFO("Poke5 FBE debug: Decrypt_DE result=%d\n", de_ok ? 1 : 0);
++	if (!de_ok)
++		return -1;
++	Parse_Users();
++	if (!UnlockDefault)
++		return 0;
++	LOGINFO("Poke5 FBE debug: loading user 0 CE key with default credential\n");
++	bool ce_ok = Decrypt_User(0, "!");
++	LOGINFO("Poke5 FBE debug: Decrypt_User(0, default) result=%d\n", ce_ok ? 1 : 0);
++	return ce_ok ? 0 : -1;
++#else
++	LOGERR("Poke5 FBE debug: USE_FSCRYPT not enabled\n");
++#endif
++#else
++	LOGERR("Poke5 FBE debug: TW_INCLUDE_FBE not enabled\n");
++#endif
++#else
++	LOGERR("Poke5 FBE debug: TW_INCLUDE_CRYPTO not enabled\n");
++#endif
++	return -1;
++}
++
+ void TWPartitionManager::Decrypt_Data() {
+ 	#ifdef TW_INCLUDE_CRYPTO
+ 	TWPartition* Decrypt_Data = Find_Partition_By_Path("/data");
+diff --git a/partitions.hpp b/partitions.hpp
+--- a/partitions.hpp
++++ b/partitions.hpp
+@@ -323,2 +323,3 @@ public:
+ 	int Poke5_Debug_Metadata_Decrypt(bool MountData);                         // Debug Poke5 metadata decrypt without recovery restart
++	int Poke5_Debug_FBE_Decrypt(bool UnlockDefault);                          // Debug Poke5 DE and default CE key loading
+ 	void Output_Partition_Logging();                                          // Outputs partition information to the log

@@ -1,0 +1,126 @@
+diff --git a/openrecoveryscript.cpp b/openrecoveryscript.cpp
+index c2ff0fe..0993166 100755
+--- a/openrecoveryscript.cpp
++++ b/openrecoveryscript.cpp
+@@ -703,6 +703,11 @@ void OpenRecoveryScript::Run_CLI_Command(const char* command) {
+ 		} else {
+ 			LOGINFO("Missing parameter: var name\n");
+ 		}
++	} else if (cmd_str == "poke5md") {
++		bool mount_data = parts.size() > 1 && parts[1] == "mount";
++		gui_print("Running Poke5 metadata decrypt debug%s...\n", mount_data ? " with mount" : "");
++		int ret = PartitionManager.Poke5_Debug_Metadata_Decrypt(mount_data);
++		gui_print("Poke5 metadata decrypt debug result: %d\n", ret);
+ 	} else if (cmd_str == "decrypt") {
+ 		// twrp cmd cannot decrypt a password with space, should decrypt on gui
+ 		if (parts.size() == 1) {
+diff --git a/partitionmanager.cpp b/partitionmanager.cpp
+index 1ff01f8..89e307e 100755
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -418,6 +418,93 @@ int TWPartitionManager::Write_Fstab(void) {
+ 	return true;
+ }
+ 
++
++int TWPartitionManager::Poke5_Debug_Metadata_Decrypt(bool MountData) {
++#ifdef TW_INCLUDE_CRYPTO
++#ifdef TW_INCLUDE_FBE_METADATA_DECRYPT
++#ifdef USE_FSCRYPT
++	LOGINFO("Poke5 metadata debug: start mount_data=%d\n", MountData ? 1 : 0);
++	TWPartition* Decrypt_Data = Find_Partition_By_Path("/data");
++	if (!Decrypt_Data) {
++		LOGERR("Poke5 metadata debug: /data partition not found\n");
++		return -1;
++	}
++	LOGINFO("Poke5 metadata debug: data actual='%s' mount='%s' keydir='%s' fs='%s' encrypted=%d decrypted=%d fbe=%d\n",
++			Decrypt_Data->Actual_Block_Device.c_str(), Decrypt_Data->Mount_Point.c_str(),
++			Decrypt_Data->Key_Directory.c_str(), Decrypt_Data->Current_File_System.c_str(),
++			Decrypt_Data->Is_Encrypted ? 1 : 0, Decrypt_Data->Is_Decrypted ? 1 : 0,
++			Decrypt_Data->Is_FBE ? 1 : 0);
++
++	TWPartition* Key_Directory_Partition = Find_Partition_By_Path(Decrypt_Data->Key_Directory);
++	if (Key_Directory_Partition != nullptr && !Key_Directory_Partition->Is_Mounted()) {
++		LOGINFO("Poke5 metadata debug: mounting key directory '%s'\n", Decrypt_Data->Key_Directory.c_str());
++		Mount_By_Path(Decrypt_Data->Key_Directory, false);
++	}
++
++	bool poke5_metadata_mounted = Mount_By_Path("/metadata", false);
++	bool poke5_system_mounted = Mount_By_Path("/system_root", false);
++	if (!poke5_system_mounted)
++		poke5_system_mounted = Mount_By_Path("/system", false);
++	bool poke5_vendor_mounted = Mount_By_Path("/vendor", false);
++	LOGINFO("Poke5 metadata debug: mounts metadata=%d system=%d vendor=%d\n",
++			poke5_metadata_mounted ? 1 : 0, poke5_system_mounted ? 1 : 0, poke5_vendor_mounted ? 1 : 0);
++
++	android::base::SetProperty("ctl.start", "poke5-qseecomd");
++	usleep(1000000);
++	// Keep the existing hwservicemanager alive. Restarting it right before
++	// fscrypt can make Keymaster's ServiceManager lookup abort in recovery.
++	android::base::SetProperty("ctl.start", "poke5-keymaster");
++	android::base::SetProperty("ctl.start", "poke5-gatekeeper");
++	android::base::SetProperty("ctl.start", "poke5-boot-hal");
++	usleep(2000000);
++	LOGINFO("Poke5 metadata debug: services qsee=%s keymaster=%s gatekeeper=%s hwservicemanager=%s\n",
++			android::base::GetProperty("init.svc.poke5-qseecomd", "").c_str(),
++			android::base::GetProperty("init.svc.poke5-keymaster", "").c_str(),
++			android::base::GetProperty("init.svc.poke5-gatekeeper", "").c_str(),
++			android::base::GetProperty("init.svc.hwservicemanager", "").c_str());
++
++	Set_Crypto_State();
++	Set_Crypto_Type("file");
++	LOGINFO("Poke5 metadata debug: before fscrypt blk='%s' mount='%s' old_crypto_blkdev='%s'\n",
++			Decrypt_Data->Actual_Block_Device.c_str(), Decrypt_Data->Mount_Point.c_str(),
++			android::base::GetProperty("ro.crypto.fs_crypto_blkdev", "").c_str());
++
++	bool ok = fscrypt_mount_metadata_encrypted(Decrypt_Data->Actual_Block_Device, Decrypt_Data->Mount_Point, false);
++	std::string crypto_blkdev = android::base::GetProperty("ro.crypto.fs_crypto_blkdev", "error");
++	LOGINFO("Poke5 metadata debug: after fscrypt ok=%d crypto_blkdev='%s'\n", ok ? 1 : 0, crypto_blkdev.c_str());
++	if (!ok || crypto_blkdev.empty() || crypto_blkdev == "error") {
++		LOGERR("Poke5 metadata debug: metadata decrypt failed or returned invalid block device\n");
++		return -1;
++	}
++
++	Decrypt_Data->Decrypted_Block_Device = crypto_blkdev;
++	Decrypt_Data->Is_Decrypted = true;
++	if (MountData) {
++		LOGINFO("Poke5 metadata debug: trying to mount decrypted /data\n");
++		int retry_count = 10;
++		while (!Decrypt_Data->Mount(false) && --retry_count)
++			usleep(500);
++		if (!Decrypt_Data->Mount(false)) {
++			LOGERR("Poke5 metadata debug: failed to mount /data after metadata decrypt\n");
++			return -1;
++		}
++		LOGINFO("Poke5 metadata debug: /data mounted after metadata decrypt\n");
++	}
++	return 0;
++#else
++	LOGERR("Poke5 metadata debug: USE_FSCRYPT not enabled\n");
++	return -1;
++#endif
++#else
++	LOGERR("Poke5 metadata debug: TW_INCLUDE_FBE_METADATA_DECRYPT not enabled\n");
++	return -1;
++#endif
++#else
++	LOGERR("Poke5 metadata debug: TW_INCLUDE_CRYPTO not enabled\n");
++	return -1;
++#endif
++}
++
+ void TWPartitionManager::Decrypt_Data() {
+ 	#ifdef TW_INCLUDE_CRYPTO
+ 	TWPartition* Decrypt_Data = Find_Partition_By_Path("/data");
+diff --git a/partitions.hpp b/partitions.hpp
+index 1b2f3cb..872903c 100755
+--- a/partitions.hpp
++++ b/partitions.hpp
+@@ -320,6 +320,7 @@ public:
+ 	void Setup_Fstab_Partitions(bool Display_Error);                          // Populates the partitions
+ 	int Write_Fstab();                                                        // Creates /etc/fstab file that's used by the command line for mount commands
+ 	void Decrypt_Data();													  // Decrypt Data if enabled
++	int Poke5_Debug_Metadata_Decrypt(bool MountData);                         // Debug Poke5 metadata decrypt without recovery restart
+ 	void Output_Partition_Logging();                                          // Outputs partition information to the log
+ 	void Output_Partition(TWPartition* Part);                                 // Outputs partition details to the log
+ 	int Mount_By_Path(string Path, bool Display_Error);                       // Mounts partition based on path (e.g. /system)
