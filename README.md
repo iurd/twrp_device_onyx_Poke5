@@ -89,7 +89,7 @@ Build:
 ```sh
 source build/envsetup.sh
 export ALLOW_MISSING_DEPENDENCIES=true
-lunch omni_Poke5-eng
+lunch twrp_Poke5-eng
 mka recoveryimage
 ```
 
