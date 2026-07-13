@@ -40,7 +40,18 @@ On Poke5, `/dev/ebc` reports a physical update buffer of `1448x1072` and a logic
 
 This tree includes a monochrome Kindle e-ink TWRP theme under `theme/`, derived from `MollySophia/twrp_device_amazon_kindle`. `TW_CUSTOM_THEME` points to that directory. The theme keeps its original `1080x1920` design resolution so TWRP's built-in theme scaler can map it onto the Poke5 logical portrait framebuffer (`1072x1448`).
 
-The build patch `patches/0002-gui-support-custom-theme-directory.patch` extends the TWRP Soong theme copy hook so `TW_CUSTOM_THEME` can be a directory containing `ui.xml`, `portrait.xml`, `splash.xml`, and `images/`.
+The build patch `patches/0002-gui-support-custom-theme-directory.patch` extends the TWRP Soong theme copy hook so the complete device theme is copied after the default resources instead of being overwritten by them.
+
+## Data decryption
+
+The production patch series automatically mounts metadata-encrypted `/data`,
+loads the user 0 DE/default CE keys, and exposes plaintext internal storage.
+Only qseecomd and the Qualcomm Keymaster service are started from the
+device-owned recovery rc. Metadata/FBE state and TWRP storage refresh remain in
+`partitionmanager.cpp`, where they can update the live recovery process.
+
+Diagnostic `poke5md` and `poke5fbe` commands are archived under
+`patches/debug-disabled/` and are not applied to production builds.
 
 ## Stock-derived blobs
 
@@ -81,6 +92,11 @@ export ALLOW_MISSING_DEPENDENCIES=true
 lunch omni_Poke5-eng
 mka recoveryimage
 ```
+
+`TW_INCLUDE_CRYPTO_FBE` is enabled so TWRP's make-side relinker packages the
+FBE and Keymaster support libraries into a clean recovery ramdisk. If an old
+incremental output directory has a stale `relink_libraries-timestamp` after
+files were manually removed, run `m installclean` once before rebuilding.
 
 Output:
 
