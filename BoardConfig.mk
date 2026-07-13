@@ -75,9 +75,9 @@ TARGET_SCREEN_WIDTH := 1072
 TARGET_SCREEN_HEIGHT := 1448
 TW_NO_SCREEN_TIMEOUT := true
 TW_NO_SCREEN_BLANK := true
-TW_BRIGHTNESS_PATH := /sys/class/backlight/panel0-backlight/brightness
-TW_MAX_BRIGHTNESS := 4095
-TW_DEFAULT_BRIGHTNESS := 1200
+TW_BRIGHTNESS_PATH := /sys/class/backlight/onyx_bl_br/brightness
+TW_MAX_BRIGHTNESS := 28
+TW_DEFAULT_BRIGHTNESS := 14
 TARGET_RECOVERY_PIXEL_FORMAT := RGBX_8888
 # Poke5 uses the DRM backend in recovery. Leave fbdev-specific forcing disabled for v6.
 # RECOVERY_GRAPHICS_FORCE_SINGLE_BUFFER := true

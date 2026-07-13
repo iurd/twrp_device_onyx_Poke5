@@ -29,7 +29,10 @@ on init
     # Required by Android FBE key installation. Without this, metadata
     # decryption can appear to succeed while /data still cannot mount.
     install_keyring
-    write /sys/class/backlight/panel0-backlight/brightness 200
+    # Poke5 frontlight is exposed through the Onyx white/cold channel. The
+    # generic panel backlight nodes accept writes but do not drive the LEDs.
+    write /sys/class/backlight/onyx_bl_br/brightness 14
+    write /sys/class/backlight/onyx_bl_ct/brightness 0
     setprop sys.usb.configfs 1
 
 on property:ro.boot.usbcontroller=*
