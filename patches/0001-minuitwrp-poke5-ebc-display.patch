@@ -135,7 +135,6 @@ index 2b94dda..0304ad5 100644
 +                   surface->data + y * surface->row_bytes,
 +                   packed_row_bytes);
 +        }
-+        printf("Poke5 EBC: copied landscape surface %dx%d directly\n", surface->width, surface->height);
 +    } else if ((uint32_t)surface->width == ebc_logical_width &&
 +               (uint32_t)surface->height == ebc_logical_height &&
 +               (uint32_t)surface->width == ebc_height &&
@@ -150,8 +149,6 @@ index 2b94dda..0304ad5 100644
 +                reinterpret_cast<uint32_t *>(ebc_buffer + dst_y * ebc_width * 4)[dst_x] = src[x];
 +            }
 +        }
-+        printf("Poke5 EBC: rotated portrait surface %ux%u to physical %ux%u using orientation 90\n",
-+               src_w, src_h, ebc_width, ebc_height);
 +    } else {
 +        printf("Poke5 EBC: surface %dx%d cannot map to EBC physical %ux%u logical %ux%u\n",
 +               surface->width, surface->height, ebc_width, ebc_height,
@@ -171,10 +168,6 @@ index 2b94dda..0304ad5 100644
 +    update.flags = ONYX_EBC_DITHER_FLAG;
 +
 +    int ret = ioctl(ebc_fd, ONYX_EBC_SEND_UPDATE, &update);
-+    printf("Poke5 EBC: SEND_UPDATE ret=%d marker=%u physical_rect=[%u %u %u %u] surface=%dx%d waveform=%u update=%u temp=0x%x flags=0x%x\n",
-+           ret, update.update_marker, update.left, update.top, update.width, update.height,
-+           surface->width, surface->height,
-+           update.waveform_mode, update.update_mode, update.temperature, update.flags);
 +    if (ret < 0)
 +        perror("Poke5 EBC: SEND_UPDATE failed");
 +    return ret;
@@ -385,15 +378,7 @@ index 2b94dda..0304ad5 100644
  
 -    drm_enable_crtc(drm_fd, main_monitor_crtc, drm_surfaces[1]);
 +    if (ebc_fd < 0) {
-+        if (ebc_fd < 0) {
-+        if (ebc_fd < 0) {
 +        drm_enable_crtc(drm_fd, main_monitor_crtc, drm_surfaces[1]);
-+    } else {
-+        printf("Poke5 EBC: skip initial DRM CRTC commit; EBC handles refresh\n");
-+    }
-+    } else {
-+        printf("Poke5 EBC: skip initial DRM CRTC commit; EBC handles refresh\n");
-+    }
 +    } else {
 +        printf("Poke5 EBC: skip initial DRM CRTC commit; EBC handles refresh\n");
 +    }
