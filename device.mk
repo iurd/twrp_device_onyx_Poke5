@@ -22,6 +22,7 @@ AB_OTA_PARTITIONS += \
 PRODUCT_COPY_FILES += \
     $(DEVICE_PATH)/recovery/root/init.recovery.qcom.rc:recovery/root/init.recovery.qcom.rc \
     $(DEVICE_PATH)/recovery/root/ueventd.rc:recovery/root/ueventd.rc \
+    $(DEVICE_PATH)/recovery.fstab:recovery/root/system/etc/twrp.fstab \
     $(DEVICE_PATH)/recovery/root/system/etc/fstab.poke5:recovery/root/system/etc/fstab.poke5 \
     $(DEVICE_PATH)/recovery/root/waveform/eink_waveform.wbf:recovery/root/waveform/eink_waveform.wbf
 

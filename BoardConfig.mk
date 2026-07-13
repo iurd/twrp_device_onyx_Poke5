@@ -67,7 +67,9 @@ BOARD_BUILD_SYSTEM_ROOT_IMAGE := false
 BOARD_USES_RECOVERY_AS_BOOT := false
 AB_OTA_UPDATER := true
 TARGET_NO_RECOVERY := false
-TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery.fstab
+# Android init/libfs_mgr must see standard fstab syntax here. TWRP reads the
+# separately packaged /etc/twrp.fstab first.
+TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery/root/system/etc/fstab.poke5
 
 # Initial TWRP test build: do not generate/sign AVB images here.
 # Stock device is already unlocked/orange; recovery_a will be flashed via EDL for testing.
