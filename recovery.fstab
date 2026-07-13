@@ -1,13 +1,14 @@
-# BOOX Poke5 initial TWRP fstab
-# Firmware reference: 2024-06-05_12-04_3.5.1_19ed122a7, Android 11, active slot _a during extraction
-# This first-pass fstab favors explicit physical partitions for safety.
+# BOOX Poke5 TWRP fstab
+# Firmware reference: 2024-06-05_12-04_3.5.1_19ed122a7, Android 11, active slot _a during extraction.
+# TWRP syntax is kept here so init/TWRP startup remains stable. libfs_mgr uses
+# /system/etc/fstab.poke5 for metadata encryption parsing.
 
-/system             ext4      system                                      flags=display="System";logical;slotselect;backup=0
-/system_ext         ext4      system_ext                                  flags=display="System Ext";logical;slotselect;backup=0
-/vendor             ext4      vendor                                      flags=display="Vendor";logical;slotselect;backup=0
-/product            ext4      product                                     flags=display="Product";logical;slotselect;backup=0
+/system             ext4      system                                      flags=display="System";logical;slotselect;backup=0;mounttodecrypt;fsflags=ro
+/system_ext         ext4      system_ext                                  flags=display="System Ext";logical;slotselect;backup=0;fsflags=ro
+/vendor             ext4      vendor                                      flags=display="Vendor";logical;slotselect;backup=0;mounttodecrypt;fsflags=ro
+/product            ext4      product                                     flags=display="Product";logical;slotselect;backup=0;fsflags=ro
 
-/data               f2fs      /dev/block/bootdevice/by-name/userdata      flags=display="Data";backup=1;wipeingui;formattable;fileencryption=aes-256-xts:aes-256-cts:v2+emmc_optimized+wrappedkey_v0;metadata_encryption=aes-256-xts:wrappedkey_v0;keydirectory=/metadata/vold/metadata_encryption
+/data               f2fs      /dev/block/bootdevice/by-name/userdata      flags=display="Data";backup=1;wipeingui;formattable;fileencryption=aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized+wrappedkey_v0;metadata_encryption=aes-256-xts:wrappedkey_v0;keydirectory=/metadata/vold/metadata_encryption
 /metadata           ext4      /dev/block/bootdevice/by-name/metadata      flags=display="Metadata";backup=1;formattable
 /persist            ext4      /dev/block/bootdevice/by-name/persist       flags=display="Persist";backup=1
 /onyxconfig         ext4      /dev/block/bootdevice/by-name/onyxconfig    flags=display="Onyx Config";backup=1
@@ -25,5 +26,5 @@
 /super              emmc      /dev/block/bootdevice/by-name/super         flags=display="Super";backup=1;flashimg=1
 /misc               emmc      /dev/block/bootdevice/by-name/misc          flags=display="Misc";backup=1
 
-/external_sd        vfat      /devices/platform/soc/4784000.sdhci/mmc_host* flags=display="MicroSD";storage;removable
-/usb_otg            vfat      /devices/platform/soc/*.dwc3/xhci-hcd*      flags=display="USB OTG";storage;removable
+/external_sd        vfat      /dev/block/mmcblk1p1                        flags=display="MicroSD";storage;removable
+/usb_otg            auto      /dev/block/sd*                              flags=display="USB OTG";storage;removable;voldmanaged=usbotg:auto
