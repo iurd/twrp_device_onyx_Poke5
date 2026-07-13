@@ -1,0 +1,26 @@
+diff --git a/crypto/fscrypt/MetadataCrypt.cpp b/crypto/fscrypt/MetadataCrypt.cpp
+index 853e81e..b51d70e 100755
+--- a/crypto/fscrypt/MetadataCrypt.cpp
++++ b/crypto/fscrypt/MetadataCrypt.cpp
+@@ -98,7 +98,9 @@ static bool mount_via_fs_mgr(const char* mount_point, const char* blk_device) {
+     }
+ 
+     if (fstab_default.empty()) {
+-        if (!ReadDefaultFstab(&fstab_default)) {
++        if (!android::fs_mgr::ReadFstabFromFile("/system/etc/fstab.poke5", &fstab_default) &&
++            !android::fs_mgr::ReadFstabFromFile("/etc/fstab.poke5", &fstab_default) &&
++            !ReadDefaultFstab(&fstab_default)) {
+             PLOG(ERROR) << "Failed to open default fstab";
+             return -1;
+         }
+@@ -287,7 +289,9 @@ bool fscrypt_mount_metadata_encrypted(const std::string& blk_device, const std::
+         return false;
+     }
+     if (fstab_default.empty()) {
+-        if (!ReadDefaultFstab(&fstab_default)) {
++        if (!android::fs_mgr::ReadFstabFromFile("/system/etc/fstab.poke5", &fstab_default) &&
++            !android::fs_mgr::ReadFstabFromFile("/etc/fstab.poke5", &fstab_default) &&
++            !ReadDefaultFstab(&fstab_default)) {
+             PLOG(ERROR) << "Failed to open default fstab";
+             return -1;
+         }

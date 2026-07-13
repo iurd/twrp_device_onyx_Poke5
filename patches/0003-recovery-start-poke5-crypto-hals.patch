@@ -1,0 +1,133 @@
+diff --git a/partitionmanager.cpp b/partitionmanager.cpp
+index 5aee83f..1ff01f8 100755
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -24,6 +24,7 @@
+ #include <unistd.h>
+ #include <map>
+ #include <vector>
++#include <thread>
+ #include <dirent.h>
+ #include <time.h>
+ #include <errno.h>
+@@ -430,27 +430,64 @@ void TWPartitionManager::Decrypt_Data() {
+ 		if (!Decrypt_Data->Key_Directory.empty()) {
+ 			Set_Crypto_Type("file");
+ #ifdef TW_INCLUDE_FBE_METADATA_DECRYPT
++			// Poke5 keeps its metadata-encryption key hardware-wrapped. Mount
++			// stock system and vendor, then start matching Qualcomm crypto HALs
++			// before asking fscrypt to unwrap the metadata key.
++			bool poke5_system_mounted = Mount_By_Path("/system_root", false);
++			if (!poke5_system_mounted)
++				poke5_system_mounted = Mount_By_Path("/system", false);
++			bool poke5_vendor_mounted = Mount_By_Path("/vendor", false);
++			LOGINFO("Poke5 crypto: system mounted=%d vendor mounted=%d\n",
++					poke5_system_mounted ? 1 : 0, poke5_vendor_mounted ? 1 : 0);
++			if (poke5_vendor_mounted) {
++				// qseecomd needs stock system libraries such as libion.so, so system
++				// must be mounted before this point.
++				android::base::SetProperty("ctl.start", "poke5-qseecomd");
++				int service_retry = 100;
++				while (android::base::GetProperty("init.svc.poke5-qseecomd", "") != "running" && --service_retry)
++					usleep(50000);
++				LOGINFO("Poke5 crypto: qseecomd state=%s\n",
++						android::base::GetProperty("init.svc.poke5-qseecomd", "").c_str());
++				// Keep the existing hwservicemanager alive. Restarting it right before
++				// fscrypt can make Keymaster's ServiceManager lookup abort in recovery.
++				android::base::SetProperty("ctl.start", "poke5-keymaster");
++				service_retry = 100;
++				while (android::base::GetProperty("init.svc.poke5-keymaster", "") != "running" && --service_retry)
++					usleep(50000);
++				LOGINFO("Poke5 crypto: keymaster state=%s\n",
++						android::base::GetProperty("init.svc.poke5-keymaster", "").c_str());
++				// Give the running service a brief window to register its HIDL interface.
++				usleep(250000);
++			} else {
++				LOGERR("Unable to mount vendor for metadata decryption\n");
++			}
++			// Fall through to the normal TWRP metadata decrypt path.
++
+ #ifdef USE_FSCRYPT
+ 			if (fscrypt_mount_metadata_encrypted(Decrypt_Data->Actual_Block_Device, Decrypt_Data->Mount_Point, false)) {
+ 				std::string crypto_blkdev = android::base::GetProperty("ro.crypto.fs_crypto_blkdev", "error");
+ 				Decrypt_Data->Decrypted_Block_Device = crypto_blkdev;
+ 				LOGINFO("Successfully decrypted metadata encrypted data partition with new block device: '%s'\n", crypto_blkdev.c_str());
+ #endif
+ 				Decrypt_Data->Is_Decrypted = true; // Needed to make the mount function work correctly
+ 				int retry_count = 10;
+ 				while (!Decrypt_Data->Mount(false) && --retry_count)
+ 					usleep(500);
+ 				if (Decrypt_Data->Mount(false)) {
+-					if (!Decrypt_Data->Decrypt_FBE_DE()) {
+-						LOGERR("Unable to decrypt FBE device\n");
+-					}
+-
++					LOGINFO("Poke5 crypto: metadata decrypted /data mounted; loading user 0 FBE keys\n");
++					// Preserve the normal Decrypt_Data() tail before skipping the
++					// legacy default-password path below.
++					Decrypt_Adopted();
++					// Keymaster/fscrypt must not block the recovery startup thread:
++					// doing so prevents USB initialization from completing. Start the
++					// FBE phase as soon as the first adb gadget is stable instead.
++					std::thread([this, Decrypt_Data]() {
++						int adb_stable_ticks = 0;
++						for (int retry = 0; retry < 40 && adb_stable_ticks < 8; ++retry) {
++							std::string adbd = android::base::GetProperty("init.svc.adbd", "");
++							std::string usb = android::base::GetProperty("sys.usb.state", "");
++							if (adbd == "running" && usb.find("adb") != std::string::npos)
++								++adb_stable_ticks;
++							else
++								adb_stable_ticks = 0;
++							usleep(250000);
++						}
++						LOGINFO("Poke5 crypto: initial adb stable ticks=%d; loading user 0 FBE keys\n", adb_stable_ticks);
++						bool de_ok = Decrypt_DE();
++						bool ce_ok = false;
++						if (de_ok) {
++							this->Parse_Users();
++							ce_ok = Decrypt_User(0, "!");
++						}
++						LOGINFO("Poke5 crypto: early FBE key load DE=%d default_CE=%d\n", de_ok, ce_ok);
++						if (!ce_ok) {
++							LOGERR("Poke5 crypto: user 0 CE key load failed; skipping storage setup\n");
++							return;
++						}
++						DataManager::SetValue(TW_IS_DECRYPTED, 1);
++						DataManager::SetValue(TW_IS_ENCRYPTED, 0);
++						DataManager::SetValue(TW_CRYPTO_PWTYPE, 0);
++						adb_stable_ticks = 0;
++						for (int retry = 0; retry < 100 && adb_stable_ticks < 20; ++retry) {
++							std::string adbd = android::base::GetProperty("init.svc.adbd", "");
++							std::string usb = android::base::GetProperty("sys.usb.state", "");
++							if (adbd == "running" && usb.find("adb") != std::string::npos)
++								++adb_stable_ticks;
++							else
++								adb_stable_ticks = 0;
++							usleep(250000);
++						}
++						LOGINFO("Poke5 crypto: adb stable ticks=%d; applying TWRP storage state\n", adb_stable_ticks);
++						// Setup_Data_Media() would unmount the already decrypted /data.
++						if (TWFunc::Path_Exists("/data/media/0")) {
++							Decrypt_Data->Storage_Path = "/data/media/0";
++							Decrypt_Data->Symlink_Path = "/data/media/0";
++							DataManager::SetValue(TW_INTERNAL_PATH, "/data/media/0");
++							Setup_Settings_Storage_Partition(Decrypt_Data);
++							TWFunc::Recursive_Mkdir("/storage/emulated/0");
++							TWFunc::Recursive_Mkdir("/sdcard");
++							if (mount("/data/media/0", "/sdcard", nullptr, MS_BIND, nullptr) != 0 && errno != EBUSY)
++								PLOG(ERROR) << "Poke5 crypto: bind /data/media/0 -> /sdcard failed";
++							if (mount("/data/media/0", "/storage/emulated/0", nullptr, MS_BIND, nullptr) != 0 && errno != EBUSY)
++								PLOG(ERROR) << "Poke5 crypto: bind /data/media/0 -> /storage/emulated/0 failed";
++							LOGINFO("Poke5 crypto: deferred emulated storage setup complete\n");
++						}
++					}).detach();
++					return;
+ 				} else {
+ 					LOGINFO("Failed to mount data after metadata decrypt\n");
+ 				}
+ 			} else {
+ 				LOGINFO("Unable to decrypt metadata encryption\n");
+ 			}
+ #else
+ 			LOGERR("Metadata FBE decrypt support not present in this TWRP\n");
+ #endif

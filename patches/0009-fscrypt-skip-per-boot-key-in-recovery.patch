@@ -1,0 +1,29 @@
+diff --git a/crypto/fscrypt/FsCrypt.cpp b/crypto/fscrypt/FsCrypt.cpp
+--- a/crypto/fscrypt/FsCrypt.cpp
++++ b/crypto/fscrypt/FsCrypt.cpp
+@@ -481,14 +481,18 @@ bool fscrypt_initialize_systemwide_keys() {
+     if (!::writeStringToFile(device_policy.key_raw_ref, ref_filename)) return false;
+     LOG(INFO) << "Wrote system DE key reference to:" << ref_filename;
+ 
+     KeyBuffer per_boot_key;
+-    if (!generateStorageKey(makeGen(options), &per_boot_key)) return false;
+     EncryptionPolicy per_boot_policy;
+-    if (!install_storage_key(DATA_MNT_POINT, options, per_boot_key, &per_boot_policy)) return false;
+     std::string per_boot_ref_filename = std::string("/data") + fscrypt_key_per_boot_ref;
+-    if (!::writeStringToFile(per_boot_policy.key_raw_ref, per_boot_ref_filename))
+-        return false;
+-    LOG(INFO) << "Wrote per boot key reference to:" << per_boot_ref_filename;
++    // Poke5's QTI Keymaster rejects generateKey() for this disposable key in
++    // recovery (-49). Preserve the normal path when it works, but do not make
++    // failure fatal: Android recreates this key on every normal boot and it is
++    // unrelated to the persisted system/user DE and CE keys recovery needs.
++    if (generateStorageKey(makeGen(options), &per_boot_key) &&
++        install_storage_key(DATA_MNT_POINT, options, per_boot_key, &per_boot_policy) &&
++        ::writeStringToFile(per_boot_policy.key_raw_ref, per_boot_ref_filename)) {
++        LOG(INFO) << "Wrote per boot key reference to:" << per_boot_ref_filename;
++    } else {
++        LOG(WARNING) << "Poke5 recovery: disposable per-boot fscrypt key unavailable; continuing";
++    }
+ 
+     if (!::FsyncDirectory(device_key_dir)) return false;
+     return true;

@@ -1,0 +1,16 @@
+diff --git a/crypto/fscrypt/Checkpoint.cpp b/crypto/fscrypt/Checkpoint.cpp
+index 6c6d4e5..1111111 100755
+--- a/crypto/fscrypt/Checkpoint.cpp
++++ b/crypto/fscrypt/Checkpoint.cpp
+@@ -253,6 +253,12 @@ bool cp_needsCheckpoint() {
+     std::lock_guard<std::mutex> lock(isCheckpointingLock);
+ 
++    // Poke5 recovery has no working BootControl HAL/VINTF framework manifest.
++    // Querying IBootControl here blocks inside HIDL service lookup during
++    // metadata decrypt. Recovery does not need Android checkpoint/rollback
++    // handling, so disable checkpoint decisions in this environment.
++    return false;
++
+     // Make sure we only return true during boot. See b/138952436 for discussion
+     if (needsCheckpointWasCalled) return isCheckpointing;
+     needsCheckpointWasCalled = true;

@@ -1,0 +1,24 @@
+diff --git a/keymaster/4.1/support/Keymaster.cpp b/keymaster/4.1/support/Keymaster.cpp
+index cd811f7a4..47742be46 100644
+--- a/keymaster/4.1/support/Keymaster.cpp
++++ b/keymaster/4.1/support/Keymaster.cpp
+@@ -18,6 +18,7 @@
+ #include <iomanip>
+ 
+ #include <android-base/logging.h>
++#include <hidl/ServiceManagement.h>
+ #include <android/hidl/manager/1.2/IServiceManager.h>
+ #include <keymasterV4_0/key_param_output.h>
+ #include <keymasterV4_0/keymaster_utils.h>
+@@ -121,7 +122,10 @@ void Keymaster::logIfKeymasterVendorError(ErrorCode ec) const {
+ }
+ 
+ Keymaster::KeymasterSet Keymaster::enumerateAvailableDevices() {
+-    auto serviceManager = IServiceManager::getService();
++    // Recovery has no framework VINTF manifest entry for hwservicemanager.
++    // Looking the manager up through itself therefore returns null even though
++    // the hwbinder context manager is already running.
++    auto serviceManager = ::android::hardware::defaultServiceManager1_2();
+     CHECK(serviceManager) << "Could not retrieve ServiceManager";
+ 
+     auto km4s = enumerateDevices<Keymaster4>(serviceManager);
