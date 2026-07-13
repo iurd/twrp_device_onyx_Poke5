@@ -2,6 +2,12 @@ DEVICE_PATH := device/onyx/Poke5
 
 ALLOW_MISSING_DEPENDENCIES := true
 
+# Generate the final canonical recovery properties with the stock patch
+# level. Qualcomm Keymaster consumes these before TWRP's runtime override
+# stage, so PRODUCT_* property additions alone are too late/are overwritten.
+PLATFORM_SECURITY_PATCH := 2023-08-01
+VENDOR_SECURITY_PATCH := 2023-08-01
+
 TARGET_ARCH := arm64
 TARGET_ARCH_VARIANT := armv8-a
 TARGET_CPU_ABI := arm64-v8a
@@ -86,6 +92,12 @@ TARGET_RECOVERY_PIXEL_FORMAT := RGBX_8888
 TW_INCLUDE_FASTBOOTD := true
 TW_INCLUDE_REPACKTOOLS := true
 TW_INCLUDE_RESETPROP := true
+# Always source Keymaster-sensitive identity values from the mounted stock
+# system/vendor. Product prop generation appends generic Android 11 values
+# after PRODUCT_*_PROPERTIES in a clean build, so static recovery defaults are
+# not sufficient here.
+TW_OVERRIDE_SYSTEM_PROPS := "ro.build.version.security_patch;ro.vendor.build.security_patch;ro.build.display.id"
+TW_OVERRIDE_PROPS_ADDITIONAL_PARTITIONS := /vendor
 TW_INCLUDE_CRYPTO := true
 TW_INCLUDE_FBE := true
 # TWRP's make-side ramdisk relinker keys off this legacy variable name.
