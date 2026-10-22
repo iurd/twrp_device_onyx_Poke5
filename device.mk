@@ -27,12 +27,16 @@ PRODUCT_COPY_FILES += \
     $(DEVICE_PATH)/recovery/root/system/etc/fstab.poke5:recovery/root/system/etc/fstab.poke5 \
     $(DEVICE_PATH)/recovery/root/waveform/eink_waveform.wbf:recovery/root/waveform/eink_waveform.wbf
 
-# Declare all non-ui.xml theme resources as recovery outputs so Make's stale
-# installed-file cleanup keeps them. Patch 0002 then makes the Soong theme hook
-# copy the complete directory after its default resources, preserving content.
+# Declare every theme resource as a recovery output so Make's stale
+# installed-file cleanup keeps it. The Soong theme hook alone is not enough:
+# losing ui.xml leaves TWRP unable to load any theme (black screen), and the
+# stock fonts are not part of the custom theme directory.
 PRODUCT_COPY_FILES += \
+    $(DEVICE_PATH)/theme/ui.xml:recovery/root/twres/ui.xml \
     $(DEVICE_PATH)/theme/portrait.xml:recovery/root/twres/portrait.xml \
     $(DEVICE_PATH)/theme/splash.xml:recovery/root/twres/splash.xml \
+    $(DEVICE_PATH)/theme/fonts/RobotoCondensed-Regular.ttf:recovery/root/twres/fonts/RobotoCondensed-Regular.ttf \
+    $(DEVICE_PATH)/theme/fonts/DroidSansMono.ttf:recovery/root/twres/fonts/DroidSansMono.ttf \
     $(call find-copy-subdir-files,*,$(DEVICE_PATH)/theme/images,recovery/root/twres/images)
 
 PRODUCT_PROPERTY_OVERRIDES += \
