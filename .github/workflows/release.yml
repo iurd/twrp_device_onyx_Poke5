@@ -110,14 +110,13 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE="out/target/product/Poke5/recovery.img"
-          STAGE="${RUNNER_TEMP}/poke5-release"
           UNPACKED="${RUNNER_TEMP}/poke5-unpacked"
           RAMDISK_CPIO="${RUNNER_TEMP}/poke5-ramdisk.cpio"
           MAGISKBOOT="external/magisk-prebuilt/prebuilt/magiskboot_x86"
 
           test -s "${IMAGE}"
           test "$(stat -c %s "${IMAGE}")" -le 100663296
-          mkdir -p "${STAGE}" "${UNPACKED}"
+          mkdir -p "${UNPACKED}"
 
           python3 system/tools/mkbootimg/unpack_bootimg.py \
             --boot_img "${IMAGE}" --out "${UNPACKED}" >/dev/null
@@ -138,8 +137,17 @@ jobs:
             "exists system/bin/recovery" \
             "exists system/lib64/libminuitwrp.so"
 
-          cp "${IMAGE}" "${STAGE}/twrp-Poke5-${VERSION}.img"
-          (cd "${STAGE}" && sha256sum "twrp-Poke5-${VERSION}.img" > "twrp-Poke5-${VERSION}.img.sha256")
+      - name: Package 96 MiB recovery image
+        run: |
+          set -euo pipefail
+          STAGE="${RUNNER_TEMP}/poke5-release"
+          RAW="${RUNNER_TEMP}/poke5-raw"
+          mkdir -p "${STAGE}" "${RAW}"
+          python3 device/onyx/Poke5/tools/package_poke5.py \
+            --tree . \
+            --template device/onyx/Poke5/tools/stock-avb-template.bin \
+            --output "${STAGE}/twrp-Poke5-${VERSION}.img" \
+            --raw-dir "${RAW}"
           cat "${STAGE}/twrp-Poke5-${VERSION}.img.sha256"
 
       - name: Upload recovery image artifact
@@ -169,7 +177,9 @@ jobs:
             ramdisk, so TWRP can load its UI instead of staying on a black
             screen.
 
-            Image: twrp-Poke5-${{ env.VERSION }}.img
+            Image: twrp-Poke5-${{ env.VERSION }}.img (96 MiB full recovery partition)
+            The image carries the stock-style hash-only AVB footer. Flash the
+            whole file; do not truncate it.
             Flashing tips: unlock the bootloader, back up the stock recovery,
             and flash to the active recovery slot (recovery_a or recovery_b).
             Do not flash this image to boot_a/boot_b.

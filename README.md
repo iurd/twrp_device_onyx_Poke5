@@ -106,7 +106,10 @@ prebuilt/recovery_dtbo          # Qualcomm QCDT
 recovery/root/                  # init.recovery.qcom.rc、fstab、waveform
 patches/                        # minuitwrp、GUI、fscrypt、Keymaster 补丁
 theme/                          # 单色电子纸 TWRP 主题（ui.xml、字体、图片）
-.github/workflows/release.yml   # 构建 + 校验 + Release
+.github/workflows/release.yml   # 构建 + 校验 + 96 MiB 打包 + Release
+tools/package_poke5.py          # 96 MiB 整分区 + AVB 打包
+tools/bootimg_poke5.py          # boot image / ramdisk / AVB 解析
+tools/stock-avb-template.bin    # 原厂 v4.0 的 640 B vbmeta + 64 B footer
 ```
 
 预编译文件来自 Poke5 原厂固件（v4.0，2025-04-02）：
@@ -186,11 +189,37 @@ mka -j4 recoveryimage
 out/target/product/Poke5/recovery.img
 ```
 
-首次全量编译约 30–60 分钟（8 核）。当前源码构建产物约 **34.5 MB**，小于
-100 MB 的 recovery 分区上限。
+首次全量编译约 30–60 分钟（8 核）。原始 boot image 约 **34.5 MB**；
+打包后的整分区镜像为 **96 MiB**（100,663,296 bytes）。
 
 > 如果增量构建出现 `relink_libraries-timestamp` 相关的旧产物问题，执行一次
 > `m installclean` 再编译。
+
+## 打包 96 MiB 整分区镜像
+
+原始构建产物 `recovery.img` 是约 34.5 MB 的 boot image。用于 dd/EDL 整分区
+刷写或与 stock 镜像结构对齐时，使用仓库内脚本套用原厂的 hash-only AVB
+footer，并补齐到 recovery 分区大小：
+
+```sh
+python3 device/onyx/Poke5/tools/package_poke5.py \
+  --tree . \
+  --template device/onyx/Poke5/tools/stock-avb-template.bin \
+  --tag v4.0-20261022
+```
+
+输出：
+
+```text
+out/target/product/Poke5/twrp-Poke5-3.7.0-v4.0-20261022.img          # 96 MiB
+out/target/product/Poke5/twrp-Poke5-3.7.0-v4.0-20261022.img.sha256
+out/target/product/Poke5/twrp-Poke5-3.7.0-v4.0-20261022.info.txt
+out/target/product/Poke5/twrp-Poke5-3.7.0-v4.0-20261022-raw.img      # 34.5 MB
+```
+
+脚本会校验 boot header、kernel/DTB/QCDT 哈希、TWRP 主题/fstab/waveform、
+Keymaster 服务、v4.0 安全补丁和 AVB hash。AVB footer 与 stock 一样是
+hash-only（algorithm NONE），没有签名。
 
 ## GitHub Actions 发布
 
@@ -201,16 +230,18 @@ out/target/product/Poke5/recovery.img
 1. 同步 TWRP 11 minimal manifest 源码。
 2. 应用本设备树的全部补丁。
 3. `lunch twrp_Poke5-eng` + `mka recoveryimage`。
-4. 校验镜像：
+4. 校验原始 `recovery.img`：
    - 内核、QCDT、DTB 的 SHA-256 与 `prebuilt/` 一致
    - ramdisk 中存在 `init.recovery.qcom.rc`、`twres/ui.xml`、
      `twres/portrait.xml`、`twres/splash.xml`、两个主题字体、
      `waveform/eink_waveform.wbf`、`system/bin/recovery`、
      `system/lib64/libminuitwrp.so`
-5. 上传 artifact。
-6. 创建 GitHub Release，附带：
-   - `twrp-Poke5-<version>.img`
+5. 使用 `tools/package_poke5.py` 打包 96 MiB 整分区镜像并套用原厂 AVB 模板。
+6. 上传 artifact。
+7. 创建 GitHub Release，附带：
+   - `twrp-Poke5-<version>.img`（96 MiB 整分区）
    - `twrp-Poke5-<version>.img.sha256`
+   - `twrp-Poke5-<version>.info.txt`
 
 发布策略：
 
@@ -266,35 +297,37 @@ Poke5 有真实的 recovery 分区，**不要刷到 `boot_a` / `boot_b`**。
 优先临时启动验证：
 
 ```sh
-fastboot boot out/target/product/Poke5/recovery.img
+IMG=out/target/product/Poke5/twrp-Poke5-3.7.0-v4.0-20261022.img
+fastboot boot "$IMG"
 ```
 
 确认后刷入当前 slot：
 
 ```sh
 adb shell getprop ro.boot.slot_suffix   # 例如 _a
-fastboot flash recovery_a out/target/product/Poke5/recovery.img
+fastboot flash recovery_a "$IMG"
 fastboot reboot recovery
 ```
 
 或在已 root 的 Android / 现有 TWRP 中写入：
 
 ```sh
-adb push recovery.img /data/local/tmp/poke5_twrp.img
+adb push "$IMG" /data/local/tmp/poke5_twrp.img
 adb shell 'dd if=/data/local/tmp/poke5_twrp.img \
   of=/dev/block/by-name/recovery_a bs=4096 conv=fsync; sync'
 adb reboot recovery
 ```
 
-刷入前务必备份 stock recovery；镜像未签名（`BOARD_AVB_ENABLE := false`），
-需要解锁 bootloader。
+刷入前务必备份 stock recovery。使用 96 MiB 整分区镜像时请写入完整文件，
+不要截断；镜像带与原厂相同的 hash-only AVB footer，但没有签名，需要解锁
+bootloader。
 
 ## 已知限制
 
 - 非官方 TWRP，基于 Poke5 固件 `2025-04-02 v4.0` 构建；截至 2026-10-22 尚未在设备上实测。
 - Data 解密依赖原厂 vendor/Keymaster，更换固件后需要重新验证。
 - EBC 刷新和逻辑/物理尺寸是 Poke5 专属实现，不能直接用于其他 Onyx 机型。
-- 镜像未做 AVB 签名；锁定的 bootloader 会拒绝启动。
+- 镜像带 hash-only AVB footer，但没有 AVB 签名；锁定的 bootloader 会拒绝启动。
 
 ## 致谢
 
