@@ -43,6 +43,10 @@ on fs
     wait /dev/block/platform/soc/${ro.boot.bootdevice}
     symlink /dev/block/platform/soc/${ro.boot.bootdevice} /dev/block/bootdevice
 
+    # Mount /metadata before fscrypt reads the metadata key.
+    wait /dev/block/bootdevice/by-name/metadata
+    mount ext4 /dev/block/bootdevice/by-name/metadata /metadata
+
 # Poke5 userdata uses metadata encryption with hardware-wrapped keys. TWRP
 # mounts stock /vendor immediately before decryption and then starts these
 # vendor HALs so fscrypt can unwrap the metadata key through Qualcomm Keymaster.
