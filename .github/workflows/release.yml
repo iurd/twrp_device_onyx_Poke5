@@ -11,9 +11,6 @@ on:
         description: "Mark the GitHub release as a prerelease"
         type: boolean
         default: false
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
@@ -25,6 +22,7 @@ concurrency:
 jobs:
   build:
     name: TWRP 11 recovery image
+    if: github.actor == github.repository_owner
     runs-on: ubuntu-22.04
     timeout-minutes: 360
 
@@ -124,9 +122,9 @@ jobs:
           python3 system/tools/mkbootimg/unpack_bootimg.py \
             --boot_img "${IMAGE}" --out "${UNPACKED}" >/dev/null
 
-          echo "fecfc6ec4a7f18b568003115d3f429c75984009a04455e9220c1f0a6d80d20c9  ${UNPACKED}/kernel" | sha256sum -c -
-          echo "d0880a7a7b0c956e99fe7dcb9b13d9d0b43069c3e11fb1dfe6c41ad1e113dc3e  ${UNPACKED}/recovery_dtbo" | sha256sum -c -
-          echo "a30fbaff73e6ffc4568b8b49c899471627dd279d469ab8ef58e492fbdb06225e  ${UNPACKED}/dtb" | sha256sum -c -
+          echo "3c45b89edfebc063f2514540fd17e165f0967b9ce5fddbf60c3cd76940bba457  ${UNPACKED}/kernel" | sha256sum -c -
+          echo "9abe41f347215f6fb13ae0bd84f6bf5fe12bfd4bdb434e9244ceeae3a8b00a14  ${UNPACKED}/recovery_dtbo" | sha256sum -c -
+          echo "093e513e99fe888e4dadd6456a8d316c4d984a6c69447cfff346403f3dd47c03  ${UNPACKED}/dtb" | sha256sum -c -
 
           "${MAGISKBOOT}" decompress "${UNPACKED}/ramdisk" "${RAMDISK_CPIO}"
           "${MAGISKBOOT}" cpio "${RAMDISK_CPIO}" \
@@ -163,6 +161,8 @@ jobs:
           body: |
             TWRP 11 recovery image for the ONYX BOOX Poke5
             (Qualcomm Scuba / QCM2290 family).
+
+            Rebased on the stock Poke5 v4.0 (2025-04-02) kernel, DTB and QCDT.
 
             This build includes the theme packaging fix:
             twres/ui.xml and the TTF fonts are packaged into the recovery
