@@ -4,11 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (for example v3.7.0-poke5)"
+        description: "New release tag, for example v4.0-20261022-1 (reusing an existing tag updates that release)"
         required: true
-        default: "v3.7.0-poke5"
+      release_name:
+        description: "Release title"
+        required: true
+        default: "TWRP 3.7.0 for Poke5 — v4.0 (2025-04-02)"
       prerelease:
-        description: "Mark the GitHub release as a prerelease"
+        description: "Mark the GitHub release as a pre-release"
+        type: boolean
+        default: true
+      make_latest:
+        description: "Mark as latest release (only enable for a final release)"
         type: boolean
         default: false
 
@@ -21,7 +28,7 @@ concurrency:
 
 jobs:
   build:
-    name: TWRP 11 recovery image
+    name: Build and package TWRP 11
     if: github.actor == github.repository_owner
     runs-on: ubuntu-22.04
     timeout-minutes: 360
@@ -34,6 +41,8 @@ jobs:
       USE_CCACHE: "1"
       CCACHE_EXEC: /usr/bin/ccache
       CCACHE_COMPILERCHECK: content
+      RELEASE_TAG: ${{ inputs.tag }}
+      ASSET_STEM: twrp-Poke5-3.7.0-${{ inputs.tag }}
 
     steps:
       - name: Check out device tree
@@ -42,22 +51,19 @@ jobs:
           path: device/onyx/Poke5
           fetch-depth: 1
 
-      - name: Resolve release tag
+      - name: Validate release tag
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
+          if [[ -z "${RELEASE_TAG}" || "${RELEASE_TAG}" != v* ]]; then
+            echo "tag must be non-empty and start with v" >&2
+            exit 1
           fi
-          if [[ "${TAG}" != v* ]]; then
-            TAG="v${TAG}"
+          if [[ "${RELEASE_TAG}" == */* ]]; then
+            echo "tag must not contain /" >&2
+            exit 1
           fi
-          VERSION="${TAG#v}"
-          echo "TAG=${TAG}" >> "${GITHUB_ENV}"
-          echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
-          echo "Release tag: ${TAG}"
-          echo "Image version: ${VERSION}"
+          echo "Release tag: ${RELEASE_TAG}"
+          echo "Asset stem: ${ASSET_STEM}"
 
       - name: Install build dependencies
         run: |
@@ -146,40 +152,92 @@ jobs:
           python3 device/onyx/Poke5/tools/package_poke5.py \
             --tree . \
             --template device/onyx/Poke5/tools/stock-avb-template.bin \
-            --output "${STAGE}/twrp-Poke5-${VERSION}.img" \
+            --output "${STAGE}/${ASSET_STEM}.img" \
             --raw-dir "${RAW}"
-          cat "${STAGE}/twrp-Poke5-${VERSION}.img.sha256"
+          cat "${STAGE}/${ASSET_STEM}.img.sha256"
 
-      - name: Upload recovery image artifact
+      - name: Upload packaged image
         uses: actions/upload-artifact@v4
         with:
-          name: twrp-Poke5-${{ env.VERSION }}
+          name: ${{ env.ASSET_STEM }}
           path: ${{ runner.temp }}/poke5-release/*
           if-no-files-found: error
           retention-days: 14
 
+  release:
+    name: Publish GitHub release
+    needs: build
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      ASSET_STEM: twrp-Poke5-3.7.0-${{ inputs.tag }}
+
+    steps:
+      - name: Download packaged image
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.ASSET_STEM }}
+          path: ${{ runner.temp }}/poke5-release
+
+      - name: Verify downloaded artifact
+        run: |
+          set -euo pipefail
+          STAGE="${RUNNER_TEMP}/poke5-release"
+          test "$(stat -c %s "${STAGE}/${ASSET_STEM}.img")" -eq 100663296
+          (cd "${STAGE}" && sha256sum -c "${ASSET_STEM}.img.sha256")
+
+      - name: Generate release body
+        run: |
+          set -euo pipefail
+          STAGE="${RUNNER_TEMP}/poke5-release"
+          SHA=$(cut -d' ' -f1 "${STAGE}/${ASSET_STEM}.img.sha256")
+          cat > "${STAGE}/release-body.md" <<'EOF'
+          # TWRP 3.7.0 for ONYX BOOX Poke5 (v4.0)
+
+          基于 Poke5 原厂 v4.0（2025-04-02）recovery 重构的 TWRP 3.7.0。
+
+          - 机型：ONYX BOOX Poke5（Qualcomm QCM2290 / bengal）
+          - 系统：Android 11（SDK 30）
+          - 内核：原厂 Linux 4.19.157-perf #9（2025-02-25，Image.gz）
+          - DTB / recovery_dtbo：与原厂 v4.0 逐字节一致
+          - boot header：base 0x0，kernel 0x8000，ramdisk 0x1000000，tags 0x100，dtb 0x1f00000
+          - 安全补丁：2024-02-01
+          - 镜像：96 MiB 整分区（100,663,296 bytes），带原厂同款 hash-only AVB footer（无签名）
+
+          SHA256:
+          ```
+          __SHA__  __ASSET__.img
+          ```
+
+          刷入（需解锁 bootloader）：
+          ```sh
+          adb shell getprop ro.boot.slot_suffix
+          fastboot flash recovery_a __ASSET__.img
+          fastboot reboot recovery
+          ```
+
+          不要刷到 boot_a/boot_b；96 MiB 文件请完整写入，不要截断。源码提交 __COMMIT__。
+
+          注意：该构建尚未在 Poke5 上实测，显示/前光/data 解密需要首次启动验证。
+          EOF
+          sed -i "s/__SHA__/${SHA}/g; s/__ASSET__/${ASSET_STEM}/g; s/__COMMIT__/${GITHUB_SHA}/g" "${STAGE}/release-body.md"
+          cat "${STAGE}/release-body.md"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.TAG }}
-          name: TWRP ${{ env.VERSION }} for ONYX BOOX Poke5
-          files: ${{ runner.temp }}/poke5-release/*
-          generate_release_notes: true
-          prerelease: ${{ inputs.prerelease || false }}
-          body: |
-            TWRP 11 recovery image for the ONYX BOOX Poke5
-            (Qualcomm Scuba / QCM2290 family).
-
-            Rebased on the stock Poke5 v4.0 (2025-04-02) kernel, DTB and QCDT.
-
-            This build includes the theme packaging fix:
-            twres/ui.xml and the TTF fonts are packaged into the recovery
-            ramdisk, so TWRP can load its UI instead of staying on a black
-            screen.
-
-            Image: twrp-Poke5-${{ env.VERSION }}.img (96 MiB full recovery partition)
-            The image carries the stock-style hash-only AVB footer. Flash the
-            whole file; do not truncate it.
-            Flashing tips: unlock the bootloader, back up the stock recovery,
-            and flash to the active recovery slot (recovery_a or recovery_b).
-            Do not flash this image to boot_a/boot_b.
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ inputs.release_name }}
+          body_path: ${{ runner.temp }}/poke5-release/release-body.md
+          files: |
+            ${{ runner.temp }}/poke5-release/${{ env.ASSET_STEM }}.img
+            ${{ runner.temp }}/poke5-release/${{ env.ASSET_STEM }}.img.sha256
+            ${{ runner.temp }}/poke5-release/${{ env.ASSET_STEM }}.info.txt
+          prerelease: ${{ inputs.prerelease }}
+          make_latest: ${{ inputs.make_latest }}
+          generate_release_notes: false
+          fail_on_unmatched_files: true
+          overwrite_files: true

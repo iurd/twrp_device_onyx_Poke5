@@ -386,7 +386,9 @@ dtb            093e513e99fe888e4dadd6456a8d316c4d984a6c69447cfff346403f3dd47c03
 
 ## 五、GitHub Actions 发布
 
-工作流：`.github/workflows/release.yml`
+工作流：`.github/workflows/release.yml`，分为两个 job。
+
+`build`：
 
 1. 同步 TWRP 11 minimal manifest 源码。
 2. 应用本设备树的全部补丁。
@@ -394,16 +396,30 @@ dtb            093e513e99fe888e4dadd6456a8d316c4d984a6c69447cfff346403f3dd47c03
 4. 校验原始 `recovery.img`（内核/QCDT/DTB 哈希、主题/fonts、fstab/waveform、
    `system/bin/recovery`、`libminuitwrp.so`）。
 5. 使用 `tools/package_poke5.py` 打包 96 MiB 整分区镜像并套用原厂 AVB 模板。
-6. 上传 artifact，创建 GitHub Release：
-   - `twrp-Poke5-<version>.img`
-   - `twrp-Poke5-<version>.img.sha256`
-   - `twrp-Poke5-<version>.info.txt`
+6. 上传 artifact（保留 14 天）。
+
+`release`：
+
+7. 下载 artifact，校验 96 MiB 大小和 SHA256。
+8. 用实际构建的 SHA256、资产名和源码提交生成 Release 正文。
+9. 创建/更新 GitHub Release，附带：
+   - `twrp-Poke5-3.7.0-<tag>.img`（96 MiB 整分区）
+   - `twrp-Poke5-3.7.0-<tag>.img.sha256`
+   - `twrp-Poke5-3.7.0-<tag>.info.txt`
+
+手动运行参数：
+
+- `tag`：必填的新 tag，例如 `v4.0-20261022-1`；复用已有 tag 会更新对应 Release。
+- `release_name`：Release 标题，默认 `TWRP 3.7.0 for Poke5 — v4.0 (2025-04-02)`。
+- `prerelease`：默认 `true`；设备实测通过后再取消。
+- `make_latest`：默认 `false`；仅正式版开启。
 
 发布策略：
 
 - 仅保留 `workflow_dispatch` 手动触发。
 - Job 限制为 `github.actor == github.repository_owner`，只有仓库所有者 `iurd` 能运行。
-- 手动运行时填写 `tag`（例如 `v4.0-20261022`）和是否预发布。
+- 已关闭 tag 自动触发；发布只通过 Actions 页面手动运行。
+- 当前已手动发布 Pre-release `v4.0-20261022`；下一次运行请使用新 tag，避免覆盖。
 - Release 由 `GITHUB_TOKEN` 创建；仓库需在
   **Settings → Actions → General → Workflow permissions** 中选择
   **Read and write permissions**。
