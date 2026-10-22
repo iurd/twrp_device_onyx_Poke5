@@ -131,6 +131,13 @@ adb reboot edl
 
 > 文章写作 `/lPoke5.elf`（无空格）；以你的 `edl.exe` 版本语法为准。
 
+加载 loader 后，按文章先重启并让系统完成更新，然后再次进入 EDL：
+
+```powershell
+.\edl.exe /z
+adb reboot edl
+```
+
 ### 6. 全量备份（必须）
 
 ```powershell
