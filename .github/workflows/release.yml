@@ -1,0 +1,175 @@
+name: Build and Release Poke5 TWRP
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (for example v3.7.0-poke5)"
+        required: true
+        default: "v3.7.0-poke5"
+      prerelease:
+        description: "Mark the GitHub release as a prerelease"
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: twrp-poke5-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: TWRP 11 recovery image
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    env:
+      ALLOW_MISSING_DEPENDENCIES: "true"
+      LC_ALL: C
+      LANG: C
+      BUILD_JOBS: "4"
+      USE_CCACHE: "1"
+      CCACHE_EXEC: /usr/bin/ccache
+      CCACHE_COMPILERCHECK: content
+
+    steps:
+      - name: Check out device tree
+        uses: actions/checkout@v4
+        with:
+          path: device/onyx/Poke5
+          fetch-depth: 1
+
+      - name: Resolve release tag
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ "${TAG}" != v* ]]; then
+            TAG="v${TAG}"
+          fi
+          VERSION="${TAG#v}"
+          echo "TAG=${TAG}" >> "${GITHUB_ENV}"
+          echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
+          echo "Release tag: ${TAG}"
+          echo "Image version: ${VERSION}"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential bzip2 ccache cpio curl flex \
+            g++-multilib gcc-multilib git git-lfs gnupg gperf imagemagick \
+            lib32ncurses5-dev lib32readline-dev lib32z1-dev libelf-dev \
+            liblz4-tool libncurses5 libssl-dev libxml2-utils lzop \
+            openjdk-11-jdk python3 python3-venv repo rsync schedtool \
+            squashfs-tools unzip xz-utils xsltproc zip zlib1g-dev
+
+      - name: Show runner storage
+        run: df -h
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ${{ runner.os }}-ccache-twrp11-poke5-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-twrp11-poke5-
+
+      - name: Configure compiler cache
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache
+        run: |
+          ccache --max-size=4G
+          ccache --zero-stats
+
+      - name: Initialize TWRP 11 source
+        run: |
+          repo init --depth=1 \
+            -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
+            -b twrp-11
+          repo sync -c --no-clone-bundle --no-tags --fail-fast -j"${BUILD_JOBS}"
+
+      - name: Apply Poke5 TWRP patches
+        run: bash device/onyx/Poke5/apply-patches.sh
+
+      - name: Build recovery image
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache
+        run: |
+          source build/envsetup.sh
+          lunch twrp_Poke5-eng
+          mka -j"${BUILD_JOBS}" recoveryimage
+
+      - name: Verify recovery image
+        run: |
+          set -euo pipefail
+          IMAGE="out/target/product/Poke5/recovery.img"
+          STAGE="${RUNNER_TEMP}/poke5-release"
+          UNPACKED="${RUNNER_TEMP}/poke5-unpacked"
+          RAMDISK_CPIO="${RUNNER_TEMP}/poke5-ramdisk.cpio"
+          MAGISKBOOT="external/magisk-prebuilt/prebuilt/magiskboot_x86"
+
+          test -s "${IMAGE}"
+          test "$(stat -c %s "${IMAGE}")" -le 100663296
+          mkdir -p "${STAGE}" "${UNPACKED}"
+
+          python3 system/tools/mkbootimg/unpack_bootimg.py \
+            --boot_img "${IMAGE}" --out "${UNPACKED}" >/dev/null
+
+          echo "fecfc6ec4a7f18b568003115d3f429c75984009a04455e9220c1f0a6d80d20c9  ${UNPACKED}/kernel" | sha256sum -c -
+          echo "d0880a7a7b0c956e99fe7dcb9b13d9d0b43069c3e11fb1dfe6c41ad1e113dc3e  ${UNPACKED}/recovery_dtbo" | sha256sum -c -
+          echo "a30fbaff73e6ffc4568b8b49c899471627dd279d469ab8ef58e492fbdb06225e  ${UNPACKED}/dtb" | sha256sum -c -
+
+          "${MAGISKBOOT}" decompress "${UNPACKED}/ramdisk" "${RAMDISK_CPIO}"
+          "${MAGISKBOOT}" cpio "${RAMDISK_CPIO}" \
+            "exists init.recovery.qcom.rc" \
+            "exists twres/ui.xml" \
+            "exists twres/portrait.xml" \
+            "exists twres/splash.xml" \
+            "exists twres/fonts/RobotoCondensed-Regular.ttf" \
+            "exists twres/fonts/DroidSansMono.ttf" \
+            "exists waveform/eink_waveform.wbf" \
+            "exists system/bin/recovery" \
+            "exists system/lib64/libminuitwrp.so"
+
+          cp "${IMAGE}" "${STAGE}/twrp-Poke5-${VERSION}.img"
+          (cd "${STAGE}" && sha256sum "twrp-Poke5-${VERSION}.img" > "twrp-Poke5-${VERSION}.img.sha256")
+          cat "${STAGE}/twrp-Poke5-${VERSION}.img.sha256"
+
+      - name: Upload recovery image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: twrp-Poke5-${{ env.VERSION }}
+          path: ${{ runner.temp }}/poke5-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: TWRP ${{ env.VERSION }} for ONYX BOOX Poke5
+          files: ${{ runner.temp }}/poke5-release/*
+          generate_release_notes: true
+          prerelease: ${{ inputs.prerelease || false }}
+          body: |
+            TWRP 11 recovery image for the ONYX BOOX Poke5
+            (Qualcomm Scuba / QCM2290 family).
+
+            This build includes the theme packaging fix:
+            twres/ui.xml and the TTF fonts are packaged into the recovery
+            ramdisk, so TWRP can load its UI instead of staying on a black
+            screen.
+
+            Image: twrp-Poke5-${{ env.VERSION }}.img
+            Flashing tips: unlock the bootloader, back up the stock recovery,
+            and flash to the active recovery slot (recovery_a or recovery_b).
+            Do not flash this image to boot_a/boot_b.
