@@ -185,6 +185,12 @@ Recovery。
 - SHA256：`97cd23f89c883702c95adc5b0c0b408382e715d8201b70fb44a168f65ed3cbc5`
 - 镜像为 **96 MiB 整分区**，带与原厂一致的 hash-only AVB footer（无签名）。
 
+- 本地重建（2026-10-22 18:19，尚未发布 Release）
+  `twrp-Poke5-3.7.0-v4.0-20261022-r2.img`
+  SHA256 `0e4d7a1bdecbf332462031a613f07f4fff522a53ba260a361194b5cf93f64c7c`
+  与 `v4.0-20261022` 的差别只在 ramdisk：本次带上了 `/metadata` 挂载和
+  `emmc_optimized` FBE 标记，kernel / DTB / recovery_dtbo 逐字节相同。
+
 旧版 `v3.7.0-poke5` 也保留在 Releases 中，按需选择。
 
 ### 黑屏修复
@@ -270,6 +276,14 @@ Data 使用 metadata 加密 + FBE（wrapped key）。恢复流程启动 `qseecom
 Qualcomm Keymaster HAL，解开 metadata 密钥后加载 user 0 的 DE/default CE 密钥。
 Data 解密依赖原厂 vendor 和固件版本，换固件后需要重新验证。
 
+2026-10-22 的两处解密路径修正：
+
+- `recovery/root/init.recovery.qcom.rc`：在 `on fs` 阶段先 `wait` 再 `mount`
+  `/metadata`，确保 fscrypt 读取 metadata 密钥时该分区已经就位。
+- `recovery.fstab` 和 `recovery/root/system/etc/fstab.poke5`：userdata 的
+  `fileencryption` 特性标记由 `inlinecrypt_optimized` 改为 `emmc_optimized`，
+  与 Poke5 的 eMMC userdata 布局一致。
+
 ---
 
 ## 三、从源码构建
@@ -344,6 +358,17 @@ python3 device/onyx/Poke5/tools/package_poke5.py \
   --tag v4.0-20261022
 ```
 
+如果要确认打包用的 kernel/DTB/recovery_dtbo 确实来自某个原厂包，加上 `--stock`
+指向从 `payload.bin` 提取的 `recovery.img`，脚本会核对 boot header 地址、cmdline
+和安全补丁级别：
+
+```sh
+python3 device/onyx/Poke5/tools/package_poke5.py \
+  --tree . \
+  --stock /path/to/boox-poke5-firmware/recovery.img \
+  --tag v4.0-20261022-r2
+```
+
 输出：
 
 ```text
@@ -381,6 +406,31 @@ kernel         3c45b89edfebc063f2514540fd17e165f0967b9ce5fddbf60c3cd76940bba457
 recovery_dtbo  9abe41f347215f6fb13ae0bd84f6bf5fe12bfd4bdb434e9244ceeae3a8b00a14
 dtb            093e513e99fe888e4dadd6456a8d316c4d984a6c69447cfff346403f3dd47c03
 ```
+
+### 固件基线来源复核（2026-10-22）
+
+基线取自国行 v4.0 全量包
+`http://firmware.boox.com/5cf23e2b55e6ee96a58b0942cde8e199/update.upx`
+（URL 里那串哈希就是这个包的 md5）。解密 `update.upx` → `update.zip` → `payload.bin`：
+
+```text
+payload.bin    1,748,179,979 字节，CrAU v2，block_size 4096，11 个分区
+               abl boot dtbo product recovery system system_ext
+               vbmeta vbmeta_system vendor xbl
+fingerprint    Onyx/Poke5/Poke5:11/2025-04-02_15-00_v4.0-rel_77d3ae190/10188
+               Android 11 / SDK 30 / 安全补丁 2024-02-01，ota-type=AB 全量
+recovery.img   100,663,296 字节
+               sha256 3a9bfa6b424ba986daa982b01b261bf247992540ed8dd3988565d85325af3571
+               与 prebuilt/ 里的 kernel/DTB/recovery_dtbo 来源逐字节一致
+```
+
+`upx2zip.py` 解密 `update.upx`，`payload_parts.py` 列分区清单，`payload_extract.py`
+提取指定分区；这三个脚本零依赖，并且处理了文石把 IMGDIFF(8) 当作 XZ 全量镜像来用的
+私有约定。
+
+> 官方国行 OTA 索引（`data.boox.com`）里 Poke5 目前最高的公开记录就是这条
+> `buildNumber=10188 / 2025-04-02_15-00_v4.0-rel`，没有公开的 4.0.2 包；设备显示
+> 4.0.2 时，请以设备里 dump 出的 `recovery_a`/`recovery_b` 为对齐基线。
 
 ---
 
@@ -434,8 +484,12 @@ https://github.com/iurd/twrp_device_onyx_Poke5/actions/workflows/release.yml
 
 ## 六、已知限制
 
-- 非官方 TWRP，基于 Poke5 固件 `2025-04-02 v4.0` 构建；截至 2026-10-22 尚未在
-  设备上实测。
+- 非官方 TWRP，基线为国行 v4.0 全量包（`2025-04-02_15-00_v4.0-rel`，buildNumber 10188）。
+- `v4.0-20261022`（`97cd23f8…`）与 `v4.0-20261022-r2`（`0e4d7a1b…`）截至 2026-10-22 只做了
+  结构性校验（boot header、AVB hash descriptor、ramdisk 内容），尚未在硬件上实测；
+  r2 新增的 `/metadata` 挂载与 `emmc_optimized` 标记需要实机验证 Data 解密。
+- 官方国行 OTA 索引没有公开的 Poke5 4.0.2 包。设备显示 4.0.2 时，应先与设备里 dump 出的
+  `recovery_a`/`recovery_b` 对齐基线，再决定是否刷 r2。
 - Data 解密依赖原厂 vendor/Keymaster，更换固件后需要重新验证。
 - EBC 刷新和逻辑/物理尺寸是 Poke5 专属实现，不能直接用于其他 Onyx 机型。
 - 镜像带 hash-only AVB footer，但没有 AVB 签名；锁定 bootloader 会拒绝启动。
