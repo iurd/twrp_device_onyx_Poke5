@@ -44,10 +44,10 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.twrp.platform=bengal
 
 PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
-    ro.build.version.security_patch=2023-08-01 \
-    ro.vendor.build.security_patch=2023-08-01 \
-    ro.build.display.id=2024-06-05_12-04_3.5.1_19ed122a7
+    ro.build.version.security_patch=2024-02-01 \
+    ro.vendor.build.security_patch=2024-02-01 \
+    ro.build.display.id=2025-04-02_15-00_v4.0-rel_77d3ae190
 
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
-    ro.build.version.security_patch=2023-08-01 \
-    ro.vendor.build.security_patch=2023-08-01
+    ro.build.version.security_patch=2024-02-01 \
+    ro.vendor.build.security_patch=2024-02-01

@@ -14,11 +14,11 @@
 | 型号 | ONYX BOOX Poke5 |
 | 平台 | Qualcomm Scuba / QCM2290（Bengal 家族，`qcs2290`） |
 | 系统 | Android 11（SDK 30） |
-| 内核 | 4.19.157（Onyx 原厂内核） |
+| 内核 | 4.19.157-perf #9（Onyx 原厂内核，2025-02-25） |
 | 存储 | eMMC，A/B 分区，独立 `recovery_a` / `recovery_b` |
 | 屏幕 | 6 英寸电子纸，逻辑 1072×1448，物理更新缓冲 1448×1072 |
-| 测试固件 | `2024-06-05_12-04_3.5.1_19ed122a7` |
-| TWRP | `3.7.0_11-Poke5-3.5.1-2024-06-05-initial` |
+| 测试固件 | `2025-04-02_15-00_v4.0-rel_77d3ae190` |
+| TWRP | `3.7.0_11-Poke5-4.0-2025-04-02` |
 
 ## 重要修复：Recovery 黑屏
 
@@ -91,7 +91,7 @@ Poke5 的 `/dev/ebc` 报告物理更新缓冲 `1448×1072`、逻辑/触摸尺寸
   checkpoint 和 per-boot key。
 - 诊断命令 `poke5md` / `poke5fbe` 位于 `patches/debug-disabled/`，不参与生产构建。
 
-Data 解密依赖原厂 vendor 分区和测试固件 `3.5.1`，其他固件需要重新确认 fstab
+Data 解密依赖原厂 vendor 分区和测试固件 `4.0`，其他固件需要重新确认 fstab
 和 Keymaster 行为。
 
 ## 仓库结构
@@ -100,7 +100,7 @@ Data 解密依赖原厂 vendor 分区和测试固件 `3.5.1`，其他固件需�
 BoardConfig.mk                  # 分区、内核、TWRP 配置
 device.mk                       # recovery root、主题、字体、属性
 twrp_Poke5.mk                   # lunch product
-prebuilt/Image                  # Onyx 原厂 4.19 内核
+prebuilt/Image.gz               # Onyx 原厂 4.19 内核（gzip，#9 2025-02-25）
 prebuilt/dtb                    # 追加 DTB
 prebuilt/recovery_dtbo          # Qualcomm QCDT
 recovery/root/                  # init.recovery.qcom.rc、fstab、waveform
@@ -109,10 +109,10 @@ theme/                          # 单色电子纸 TWRP 主题（ui.xml、字体�
 .github/workflows/release.yml   # 构建 + 校验 + Release
 ```
 
-预编译文件来自 Poke5 原厂固件：
+预编译文件来自 Poke5 原厂固件（v4.0，2025-04-02）：
 
 ```text
-prebuilt/Image
+prebuilt/Image.gz
 prebuilt/dtb
 prebuilt/recovery_dtbo
 recovery/root/waveform/eink_waveform.wbf
@@ -186,7 +186,7 @@ mka -j4 recoveryimage
 out/target/product/Poke5/recovery.img
 ```
 
-首次全量编译约 30–60 分钟（8 核）。当前源码构建产物约 **53.8 MB**，小于
+首次全量编译约 30–60 分钟（8 核）。当前源码构建产物约 **34.5 MB**，小于
 100 MB 的 recovery 分区上限。
 
 > 如果增量构建出现 `relink_libraries-timestamp` 相关的旧产物问题，执行一次
@@ -215,7 +215,7 @@ out/target/product/Poke5/recovery.img
 发布策略：
 
 - 仅保留 `workflow_dispatch` 手动触发，并限制为仓库所有者 `iurd` 运行。
-- 首次 `v3.7.0-poke5` 发布由 tag 触发；该次运行完成后关闭 tag 自动触发，
+- 已关闭 tag 自动触发；
   后续只通过 **Actions → Build and Release Poke5 TWRP → Run workflow** 发布。
 - 手动运行时填写 `tag`（默认 `v3.7.0-poke5`）和是否预发布。
 - Release 由 `GITHUB_TOKEN` 创建，仓库需在
@@ -254,9 +254,9 @@ $magiskboot cpio /tmp/poke5-ramdisk.cpio \
 CI 还会校验预编译内核/QCDT/DTB 哈希：
 
 ```text
-kernel         fecfc6ec4a7f18b568003115d3f429c75984009a04455e9220c1f0a6d80d20c9
-recovery_dtbo  d0880a7a7b0c956e99fe7dcb9b13d9d0b43069c3e11fb1dfe6c41ad1e113dc3e
-dtb            a30fbaff73e6ffc4568b8b49c899471627dd279d469ab8ef58e492fbdb06225e
+kernel         3c45b89edfebc063f2514540fd17e165f0967b9ce5fddbf60c3cd76940bba457
+recovery_dtbo  9abe41f347215f6fb13ae0bd84f6bf5fe12bfd4bdb434e9244ceeae3a8b00a14
+dtb            093e513e99fe888e4dadd6456a8d316c4d984a6c69447cfff346403f3dd47c03
 ```
 
 ## 刷入
@@ -291,7 +291,7 @@ adb reboot recovery
 
 ## 已知限制
 
-- 非官方 TWRP，仅在 Poke5 + 固件 `2024-06-05_3.5.1` 上验证。
+- 非官方 TWRP，基于 Poke5 固件 `2025-04-02 v4.0` 构建；截至 2026-10-22 尚未在设备上实测。
 - Data 解密依赖原厂 vendor/Keymaster，更换固件后需要重新验证。
 - EBC 刷新和逻辑/物理尺寸是 Poke5 专属实现，不能直接用于其他 Onyx 机型。
 - 镜像未做 AVB 签名；锁定的 bootloader 会拒绝启动。

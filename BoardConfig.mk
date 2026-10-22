@@ -5,8 +5,8 @@ ALLOW_MISSING_DEPENDENCIES := true
 # Generate the final canonical recovery properties with the stock patch
 # level. Qualcomm Keymaster consumes these before TWRP's runtime override
 # stage, so PRODUCT_* property additions alone are too late/are overwritten.
-PLATFORM_SECURITY_PATCH := 2023-08-01
-VENDOR_SECURITY_PATCH := 2023-08-01
+PLATFORM_SECURITY_PATCH := 2024-02-01
+VENDOR_SECURITY_PATCH := 2024-02-01
 
 TARGET_ARCH := arm64
 TARGET_ARCH_VARIANT := armv8-a
@@ -23,17 +23,19 @@ TARGET_BOARD_PLATFORM := bengal
 TARGET_BOOTLOADER_BOARD_NAME := qcs2290
 TARGET_OTA_ASSERT_DEVICE := Poke5
 
-BOARD_KERNEL_CMDLINE := console=ttyMSM0,115200n8 earlycon=msm_geni_serial,0x4a90000 androidboot.hardware=qcom androidboot.console=ttyMSM0 androidboot.memcg=1 lpm_levels.sleep_disabled=1 video=vfb:640x400,bpp=32,memsize=3072000 msm_rtb.filter=0x237 service_locator.enable=1 swiotlb=2048 loop.max_part=7 buildvariant=user
+BOARD_KERNEL_CMDLINE := console=ttyMSM0,115200n8 earlycon=msm_geni_serial,0x4a90000 androidboot.hardware=qcom androidboot.console=ttyMSM0 androidboot.memcg=1 lpm_levels.sleep_disabled=1 video=vfb:640x400,bpp=32,memsize=3072000 msm_rtb.filter=0x237 service_locator.enable=1 swiotlb=2048 loop.max_part=7
 BOARD_KERNEL_PAGESIZE := 4096
+# Match the stock boot header (kernel 0x8000, ramdisk 0x1000000, tags 0x100, dtb 0x1f00000).
+BOARD_KERNEL_BASE := 0x00000000
 BOARD_BOOTIMG_HEADER_VERSION := 2
 BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOTIMG_HEADER_VERSION)
 BOARD_MKBOOTIMG_ARGS += --os_version 11.0.0
-BOARD_MKBOOTIMG_ARGS += --os_patch_level 2023-08
+BOARD_MKBOOTIMG_ARGS += --os_patch_level 2024-02
 BOARD_MKBOOTIMG_ARGS += --dtb $(DEVICE_PATH)/prebuilt/dtb
 BOARD_MKBOOTIMG_ARGS += --recovery_dtbo $(DEVICE_PATH)/prebuilt/recovery_dtbo
 
-BOARD_KERNEL_IMAGE_NAME := Image
-TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/Image
+BOARD_KERNEL_IMAGE_NAME := Image.gz
+TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/Image.gz
 
 BOARD_BOOTIMAGE_PARTITION_SIZE := 100663296
 BOARD_RECOVERYIMAGE_PARTITION_SIZE := 100663296
@@ -108,4 +110,4 @@ TW_INCLUDE_FBE_METADATA_DECRYPT := true
 TARGET_USES_LOGD := true
 TWRP_INCLUDE_LOGCAT := true
 
-TW_DEVICE_VERSION := Poke5-3.5.1-2024-06-05-initial
+TW_DEVICE_VERSION := Poke5-4.0-2025-04-02
